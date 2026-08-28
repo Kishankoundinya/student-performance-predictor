@@ -114,3 +114,21 @@ handles, labels = axes.flat[0].get_legend_handles_labels()
 fig.legend(handles, labels, title="final_grade", loc="lower right")
 plt.tight_layout()
 plt.show()
+
+#Task 3(Feature Engineering)
+feature_cols = [c for c in df.columns if c not in ["student_id", "final_grade"]]
+X = df[feature_cols].copy()
+y = df["final_grade"].copy()
+
+numeric_features = ["study_time_hours", "attendance_percent", "sleep_hours",
+                     "previous_grade", "final_exam_score"]
+categorical_features = ["gender", "parental_education", "internet_access",
+                         "extracurricular_activities", "part_time_job"]
+
+preprocessor = ColumnTransformer(transformers=[
+    ("num", StandardScaler(), numeric_features),
+    ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features),
+])
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y)
+print(X_train.shape, X_test.shape)
