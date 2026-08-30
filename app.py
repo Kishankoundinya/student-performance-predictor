@@ -1,17 +1,5 @@
-
-import os
 import pandas as pd
-
-for dirname, _, filenames in os.walk('/kaggle/input'):
-    for filename in filenames:
-        print(os.path.join(dirname, filename))
-import kagglehub
-
-from google.colab import drive
-drive.mount('/content/drive')
-
-
-
+import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -19,181 +7,428 @@ from sklearn.model_selection import train_test_split, cross_val_score, GridSearc
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
-
-sns.set_style("whitegrid")
-plt.rcParams["figure.figsize"] = (8, 5)
-
-RANDOM_STATE = 42
-
-df = pd.read_csv("/content/sample_data/student_performance_dataset.csv")
-
-print(df.shape)
-df.head()
-
-df.info()
-
-df.describe(include="all").T
-
-#TASK2
-
-df.isnull().sum().sort_values(ascending=False)
-
-df["parental_education"] = df["parental_education"].fillna("Unknown")
-
-
-print("Duplicate rows:", df.duplicated().sum())
-print("Duplicate student_id:", df["student_id"].duplicated().sum())
-for col in ["study_time_hours", "attendance_percent", "sleep_hours", "previous_grade", "final_exam_score"]:
-    print(f"{col}: min={df[col].min()}, max={df[col].max()}")
-
-
-
-order = ["A", "B", "C", "D", "F"]
-
-ax = sns.countplot(
-    data=df,
-    x="final_grade",
-    hue="final_grade",
-    legend=False,
-    order=order,
-    palette="viridis"
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    classification_report,
+    confusion_matrix
 )
 
-ax.set_title("Final Grade Distribution")
-for p in ax.patches:
-    ax.annotate(int(p.get_height()), (p.get_x() + p.get_width()/2, p.get_height()),
-                ha="center", va="bottom")
-plt.show()
+st.set_page_config(
+    page_title="Student Performance Predictor",
+    page_icon="",
+    layout="wide"
+)
 
-numeric_cols = ["study_time_hours", "attendance_percent", "sleep_hours", "previous_grade", "final_exam_score"]
-fig, axes = plt.subplots(2, 3, figsize=(16, 8))
-for ax, col in zip(axes.flat, numeric_cols):
-    sns.histplot(df[col], kde=True, ax=ax, color="steelblue")
-    ax.set_title(col)
-axes.flat[-1].axis("off")
-plt.tight_layout()
-plt.show()
+st.title(" Student Performance Predictor")
+st.write("Predict a student's final grade using study habits, attendance, academic performance and other factors.")
 
-corr = df[numeric_cols].corr()
-plt.figure(figsize=(7, 6))
-sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", vmin=-1, vmax=1)
-plt.title("Correlation Matrix")
-plt.show()
+@st.cache_data
+def load_data():
+    df = pd.read_csv("student_performance_dataset.csv")
+    df["parental_education"] = df["parental_education"].fillna("Unknown")
+    return df
 
-fig, axes = plt.subplots(2, 3, figsize=(16, 8))
-for ax, col in zip(axes.flat, numeric_cols):
-    sns.boxplot(
-        data=df,
-        x="final_grade",
-        y=col,
-        hue="final_grade",
-        legend=False,
-        order=order,
-        ax=ax,
-        palette="viridis"
-    )
-    ax.set_title(f"{col} by final_grade")
+df = load_data()
 
-axes.flat[-1].axis("off")
-plt.tight_layout()
-plt.show()
+feature_cols = [
+    c for c in df.columns
+    if c not in ["student_id", "final_grade"]
+]
 
-cat_cols = ["gender", "parental_education", "internet_access", "extracurricular_activities", "part_time_job"]
-fig, axes = plt.subplots(2, 3, figsize=(18, 9))
-for ax, col in zip(axes.flat, cat_cols):
-    ct = pd.crosstab(df[col], df["final_grade"], normalize="index")[order]
-    ct.plot(kind="bar", stacked=True, ax=ax, colormap="viridis", legend=False)
-    ax.set_title(col)
-    ax.set_ylabel("Proportion")
-axes.flat[-1].axis("off")
-handles, labels = axes.flat[0].get_legend_handles_labels()
-fig.legend(handles, labels, title="final_grade", loc="lower right")
-plt.tight_layout()
-plt.show()
-
-#Task 3(Feature Engineering)
-feature_cols = [c for c in df.columns if c not in ["student_id", "final_grade"]]
 X = df[feature_cols].copy()
 y = df["final_grade"].copy()
 
-numeric_features = ["study_time_hours", "attendance_percent", "sleep_hours",
-                     "previous_grade", "final_exam_score"]
-categorical_features = ["gender", "parental_education", "internet_access",
-                         "extracurricular_activities", "part_time_job"]
+numeric_features = [
+    "study_time_hours",
+    "attendance_percent",
+    "sleep_hours",
+    "previous_grade",
+    "final_exam_score"
+]
 
-preprocessor = ColumnTransformer(transformers=[
-    ("num", StandardScaler(), numeric_features),
-    ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features),
-])
+categorical_features = [
+    "gender",
+    "parental_education",
+    "internet_access",
+    "extracurricular_activities",
+    "part_time_job"
+]
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y)
-print(X_train.shape, X_test.shape)
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("num", StandardScaler(), numeric_features),
+        (
+            "cat",
+            OneHotEncoder(handle_unknown="ignore"),
+            categorical_features
+        )
+    ]
+)
 
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
 
-#TASK 4
 models = {
-    "Logistic Regression": LogisticRegression(max_iter=1000, random_state=RANDOM_STATE),
-    "Random Forest": RandomForestClassifier(random_state=RANDOM_STATE, n_estimators=300),
+    "Logistic Regression": LogisticRegression(
+        max_iter=2000,
+        random_state=42
+    ),
+    "Random Forest": RandomForestClassifier(
+        random_state=42
+    )
 }
 
-for name, model in models.items():
-    pipe = Pipeline([("prep", preprocessor), ("model", model)])
-    scores = cross_val_score(pipe, X_train, y_train, cv=5, scoring="f1_macro")
-    print(f"{name}: macro-F1 = {scores.mean():.3f} (+/- {scores.std():.3f})")
+cv_results = {}
 
-rf_pipe = Pipeline([("prep", preprocessor), ("model", RandomForestClassifier(random_state=RANDOM_STATE))])
+for name, model in models.items():
+    pipe = Pipeline([
+        ("prep", preprocessor),
+        ("model", model)
+    ])
+
+    scores = cross_val_score(
+        pipe,
+        X_train,
+        y_train,
+        cv=5,
+        scoring="f1_macro"
+    )
+
+    cv_results[name] = scores.mean()
 
 param_grid = {
     "model__n_estimators": [200, 400],
     "model__max_depth": [None, 8, 12],
-    "model__min_samples_leaf": [1, 2, 4],
+    "model__min_samples_leaf": [1, 2, 4]
 }
 
-grid = GridSearchCV(rf_pipe, param_grid, cv=5, scoring="f1_macro", n_jobs=-1)
-grid.fit(X_train, y_train)
+rf_pipeline = Pipeline([
+    ("prep", preprocessor),
+    (
+        "model",
+        RandomForestClassifier(
+            random_state=42
+        )
+    )
+])
 
-print("Best params:", grid.best_params_)
-print("Best CV macro-F1:", grid.best_score_)
+grid = GridSearchCV(
+    rf_pipeline,
+    param_grid,
+    cv=5,
+    scoring="f1_macro",
+    n_jobs=-1
+)
+
+grid.fit(X_train, y_train)
 
 best_model = grid.best_estimator_
 
 y_pred = best_model.predict(X_test)
 
-print("Accuracy:", accuracy_score(y_test, y_pred))
-print("Macro F1:", f1_score(y_test, y_pred, average="macro", zero_division=0))
-print()
-print(classification_report(y_test, y_pred, labels=order, zero_division=0))
+accuracy = accuracy_score(y_test, y_pred)
+macro_f1 = f1_score(y_test, y_pred, average="macro")
 
-cm = confusion_matrix(y_test, y_pred, labels=order)
-plt.figure(figsize=(6, 5))
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=order, yticklabels=order)
-plt.xlabel("Predicted")
-plt.ylabel("Actual")
-plt.title("Confusion Matrix")
-plt.show()
-
-ohe_cols = best_model.named_steps["prep"].named_transformers_["cat"].get_feature_names_out(categorical_features)
-all_feature_names = numeric_features + list(ohe_cols)
-
-importances = best_model.named_steps["model"].feature_importances_
-imp_df = pd.DataFrame({"feature": all_feature_names, "importance": importances}) \
-    .sort_values("importance", ascending=False).head(15)
-
-plt.figure(figsize=(8, 6))
-sns.barplot(
-    data=imp_df,
-    y="feature",
-    x="importance",
-    hue="feature",
-    legend=False,
-    palette="viridis"
+report = classification_report(
+    y_test,
+    y_pred,
+    output_dict=True
 )
-plt.title("Top 15 Feature Importances (Random Forest)")
-plt.tight_layout()
-plt.show()
 
+conf_matrix = confusion_matrix(
+    y_test,
+    y_pred
+)
 
+feature_names = best_model.named_steps[
+    "prep"
+].get_feature_names_out()
+
+importances = best_model.named_steps[
+    "model"
+].feature_importances_
+
+importance_df = pd.DataFrame({
+    "Feature": feature_names,
+    "Importance": importances
+}).sort_values(
+    by="Importance",
+    ascending=False
+)
+
+st.sidebar.header("Student Information")
+
+gender = st.sidebar.selectbox(
+    "Gender",
+    sorted(df["gender"].dropna().unique())
+)
+
+parental_education = st.sidebar.selectbox(
+    "Parental Education",
+    sorted(df["parental_education"].dropna().unique())
+)
+
+internet_access = st.sidebar.selectbox(
+    "Internet Access",
+    sorted(df["internet_access"].dropna().unique())
+)
+
+extracurricular_activities = st.sidebar.selectbox(
+    "Extracurricular Activities",
+    sorted(df["extracurricular_activities"].dropna().unique())
+)
+
+part_time_job = st.sidebar.selectbox(
+    "Part Time Job",
+    sorted(df["part_time_job"].dropna().unique())
+)
+
+study_time_hours = st.sidebar.number_input(
+    "Study Time Hours",
+    min_value=float(df["study_time_hours"].min()),
+    max_value=float(df["study_time_hours"].max()),
+    value=float(df["study_time_hours"].median()),
+    step=0.5
+)
+
+attendance_percent = st.sidebar.number_input(
+    "Attendance Percentage",
+    min_value=float(df["attendance_percent"].min()),
+    max_value=float(df["attendance_percent"].max()),
+    value=float(df["attendance_percent"].median()),
+    step=1.0
+)
+
+sleep_hours = st.sidebar.number_input(
+    "Sleep Hours",
+    min_value=float(df["sleep_hours"].min()),
+    max_value=float(df["sleep_hours"].max()),
+    value=float(df["sleep_hours"].median()),
+    step=0.5
+)
+
+previous_grade = st.sidebar.number_input(
+    "Previous Grade",
+    min_value=float(df["previous_grade"].min()),
+    max_value=float(df["previous_grade"].max()),
+    value=float(df["previous_grade"].median()),
+    step=1.0
+)
+
+final_exam_score = st.sidebar.number_input(
+    "Final Exam Score",
+    min_value=float(df["final_exam_score"].min()),
+    max_value=float(df["final_exam_score"].max()),
+    value=float(df["final_exam_score"].median()),
+    step=1.0
+)
+
+input_data = pd.DataFrame({
+    "gender": [gender],
+    "parental_education": [parental_education],
+    "internet_access": [internet_access],
+    "extracurricular_activities": [extracurricular_activities],
+    "part_time_job": [part_time_job],
+    "study_time_hours": [study_time_hours],
+    "attendance_percent": [attendance_percent],
+    "sleep_hours": [sleep_hours],
+    "previous_grade": [previous_grade],
+    "final_exam_score": [final_exam_score]
+})
+
+st.subheader("Student Prediction")
+
+if st.button("Predict Final Grade", type="primary"):
+
+    prediction = best_model.predict(input_data)[0]
+
+    probabilities = best_model.predict_proba(input_data)[0]
+
+    classes = best_model.named_steps[
+        "model"
+    ].classes_
+
+    probability_df = pd.DataFrame({
+        "Grade": classes,
+        "Probability": probabilities
+    })
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric(
+            "Predicted Final Grade",
+            prediction
+        )
+
+    with col2:
+        confidence = probabilities[
+            list(classes).index(prediction)
+        ] * 100
+
+        st.metric(
+            "Prediction Confidence",
+            f"{confidence:.2f}%"
+        )
+
+    st.subheader("Prediction Probabilities")
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+
+    sns.barplot(
+        data=probability_df,
+        x="Grade",
+        y="Probability",
+        ax=ax
+    )
+
+    ax.set_ylim(0, 1)
+    ax.set_ylabel("Probability")
+    ax.set_xlabel("Final Grade")
+
+    st.pyplot(fig)
+
+st.divider()
+
+st.subheader("Model Performance")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric(
+        "Test Accuracy",
+        f"{accuracy * 100:.2f}%"
+    )
+
+with col2:
+    st.metric(
+        "Macro F1 Score",
+        f"{macro_f1:.4f}"
+    )
+
+with col3:
+    st.metric(
+        "Best CV F1 Score",
+        f"{grid.best_score_:.4f}"
+    )
+
+st.write("Best Random Forest Parameters")
+
+st.json(grid.best_params_)
+
+st.subheader("Cross Validation Results")
+
+cv_df = pd.DataFrame({
+    "Model": list(cv_results.keys()),
+    "Macro F1 Score": list(cv_results.values())
+})
+
+st.dataframe(
+    cv_df,
+    use_container_width=True
+)
+
+st.divider()
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("Final Grade Distribution")
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    sns.countplot(
+        data=df,
+        x="final_grade",
+        ax=ax
+    )
+
+    ax.set_xlabel("Final Grade")
+    ax.set_ylabel("Number of Students")
+
+    st.pyplot(fig)
+
+with col2:
+    st.subheader("Confusion Matrix")
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    sns.heatmap(
+        conf_matrix,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=best_model.named_steps["model"].classes_,
+        yticklabels=best_model.named_steps["model"].classes_,
+        ax=ax
+    )
+
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
+
+    st.pyplot(fig)
+
+st.divider()
+
+st.subheader("Classification Report")
+
+report_df = pd.DataFrame(report).transpose()
+
+st.dataframe(
+    report_df,
+    use_container_width=True
+)
+
+st.subheader("Feature Importance")
+
+importance_display = importance_df.copy()
+
+importance_display["Feature"] = (
+    importance_display["Feature"]
+    .str.replace("num__", "", regex=False)
+    .str.replace("cat__", "", regex=False)
+)
+
+st.dataframe(
+    importance_display.head(15),
+    use_container_width=True
+)
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+top_features = importance_display.head(15).sort_values(
+    by="Importance"
+)
+
+sns.barplot(
+    data=top_features,
+    x="Importance",
+    y="Feature",
+    ax=ax
+)
+
+ax.set_xlabel("Importance")
+ax.set_ylabel("Feature")
+
+st.pyplot(fig)
+
+st.divider()
+
+st.subheader("Dataset Preview")
+
+st.dataframe(
+    df.head(10),
+    use_container_width=True
+)
+
+st.write(
+    f"Dataset contains **{df.shape[0]} students** and **{df.shape[1]} columns**."
+)
